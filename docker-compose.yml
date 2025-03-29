@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  synology-cert-updater:
+    build: .
+    environment:
+      - SYNOLOGY_HOST=${SYNOLOGY_HOST}
+      - SYNOLOGY_USER=${SYNOLOGY_USER}
+      - SYNOLOGY_PASS=${SYNOLOGY_PASS}
+      - DOMAIN_PATTERN=${DOMAIN_PATTERN:-*.liofal.net}
+      - VERIFY_SSL=${VERIFY_SSL:-false}
+      - DRY_RUN=${DRY_RUN:-false}
+    volumes:
+      - ./test/certs:/certs
