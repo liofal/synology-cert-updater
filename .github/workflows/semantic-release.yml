@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Prevent running if commit message contains skip ci
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    permissions:
+      contents: write # Needed for semantic-release commit/tag/release
+      issues: write # Needed for semantic-release
+      pull-requests: write # Needed for semantic-release
+      packages: write # Needed for pushing Docker image to GHCR
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          # Need full history for semantic-release
+          fetch-depth: 0
+          # Important: semantic-release needs to push, but we use GITHUB_TOKEN for that
+          # The default GITHUB_TOKEN is sufficient for semantic-release to create the release and tag
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 'lts/*'
+
+      - name: Install semantic-release dependencies
+        run: npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/changelog @semantic-release/exec @semantic-release/git @semantic-release/github conventional-changelog-conventionalcommits
+
+      # This step runs semantic-release. It will:
+      # 1. Analyze commits
+      # 2. Generate release notes
+      # 3. Update CHANGELOG.md
+      # 4. Run our update-version.js script (which updates synology_cert_updater.py AND creates VERSION.txt)
+      # 5. Commit changes (CHANGELOG.md, package.json, synology_cert_updater.py)
+      # 6. Create the Git tag (e.g., v1.0.1)
+      # 7. Create the GitHub Release (empty assets)
+      - name: Semantic Release
+        env:
+          # Use the default GITHUB_TOKEN. It has permissions to create releases and push tags.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+      # --- Steps moved from release.yml ---
+
+      # Only proceed if semantic-release actually created a new release/tag
+      # It outputs 'new_release_published' which is 'true' or 'false' as a string
+      - name: Check if new release was published
+        id: check_release
+        run: |
+          # Check if VERSION.txt exists (created by update-version.js during semantic-release)
+          if [[ -f VERSION.txt ]]; then
+            echo "new_release_published=true" >> $GITHUB_OUTPUT
+            echo "version=$(cat VERSION.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "No VERSION.txt found, assuming no new release published by semantic-release."
+            echo "new_release_published=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.check_release.outputs.new_release_published == 'true'
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        if: steps.check_release.outputs.new_release_published == 'true'
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }} # Use default token for GHCR login
+
+      - name: Build and push Docker image
+        if: steps.check_release.outputs.new_release_published == 'true'
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/synology-cert-updater:latest
+            ghcr.io/${{ github.repository_owner }}/synology-cert-updater:${{ steps.check_release.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update Kubernetes manifests
+        if: steps.check_release.outputs.new_release_published == 'true'
+        run: |
+          VERSION=${{ steps.check_release.outputs.version }}
+          echo "Updating K8s manifests with version $VERSION"
+          sed -i "s|image: synology-cert-updater:latest|image: ghcr.io/${{ github.repository_owner }}/synology-cert-updater:$VERSION|g" k8s/job.yaml
+          sed -i "s|image: synology-cert-updater:latest|image: ghcr.io/${{ github.repository_owner }}/synology-cert-updater:$VERSION|g" k8s/cronjob.yaml
+          sed -i "s|imagePullPolicy: IfNotPresent|imagePullPolicy: Always|g" k8s/job.yaml
+          sed -i "s|imagePullPolicy: IfNotPresent|imagePullPolicy: Always|g" k8s/cronjob.yaml
+
+      # This step finds the release created by semantic-release and updates it with the files
+      - name: Update Release with Assets
+        if: steps.check_release.outputs.new_release_published == 'true'
+        uses: softprops/action-gh-release@v1
+        # No need to specify name/body, it updates the existing release
+        with:
+          # Use the version determined by semantic-release
+          tag_name: v${{ steps.check_release.outputs.version }}
+          files: |
+            k8s/job.yaml
+            k8s/cronjob.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use default token to update the release
