@@ -1,0 +1,49 @@
+{{- if .Values.job.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "synology-cert-updater.fullname" . }}-job
+  labels:
+    {{- include "synology-cert-updater.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5" # Run before potential tests
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: {{ .Values.commonJobSettings.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+      labels:
+        {{- include "synology-cert-updater.selectorLabels" . | nindent 8 }}
+        # Add a specific label for the job pod if needed
+        job-name: {{ include "synology-cert-updater.fullname" . }}-job
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "synology-cert-updater.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - {{ include "synology-cert-updater.containerSpec" (dict "Chart" . "Values" .Values "dryRun" .Values.job.dryRun) | indent 6 }}
+      volumes:
+      - name: cert-volume
+        secret:
+          secretName: {{ .Values.secrets.certificate | quote }}
+      restartPolicy: Never
+      {{- with .Values.commonJobSettings.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.commonJobSettings.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.commonJobSettings.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

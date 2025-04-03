@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "synology-cert-updater.fullname" . }}-cron
+  labels:
+    {{- include "synology-cert-updater.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronJob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.cronJob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronJob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronJob.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "synology-cert-updater.selectorLabels" . | nindent 8 }}
+    spec:
+      ttlSecondsAfterFinished: {{ .Values.commonJobSettings.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          annotations:
+            {{- toYaml .Values.podAnnotations | nindent 12 }}
+          labels:
+            {{- include "synology-cert-updater.selectorLabels" . | nindent 12 }}
+        spec:
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "synology-cert-updater.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+          - {{ include "synology-cert-updater.containerSpec" (dict "Chart" . "Values" .Values "dryRun" .Values.cronJob.dryRun) | indent 10 }}
+          volumes:
+          - name: cert-volume
+            secret:
+              secretName: {{ .Values.secrets.certificate | quote }}
+          restartPolicy: Never
+          {{- with .Values.commonJobSettings.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.commonJobSettings.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.commonJobSettings.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

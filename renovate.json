@@ -1,42 +1,64 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base"
+    "config:recommended"
   ],
   "packageRules": [
     {
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "matchCurrentVersion": "!/^0/",
       "automerge": true
     },
     {
-      "matchDepTypes": ["devDependencies"],
-      "matchPackagePatterns": ["lint", "prettier"],
-      "automerge": true
+      "matchDepTypes": [
+        "devDependencies"
+      ],
+      "automerge": true,
+      "matchPackageNames": [
+        "/lint/",
+        "/prettier/"
+      ]
     },
     {
-      "matchPackagePatterns": ["^@commitlint", "^husky", "^semantic-release"],
       "groupName": "commit-lint-and-release",
-      "schedule": ["after 10pm on sunday"]
-    },
-    {
-      "matchPackageNames": ["python"],
-      "allowedVersions": "3.11.x"
+      "schedule": [
+        "after 10pm on sunday"
+      ],
+      "matchPackageNames": [
+        "/^@commitlint/",
+        "/^husky/",
+        "/^semantic-release/"
+      ]
     }
   ],
   "pip_requirements": {
-    "fileMatch": ["requirements.txt"]
+    "fileMatch": [
+      "requirements.txt"
+    ]
   },
   "dockerfile": {
-    "fileMatch": ["Dockerfile"]
+    "fileMatch": [
+      "Dockerfile"
+    ]
   },
   "github-actions": {
-    "fileMatch": [".github/workflows/*.yml"]
+    "fileMatch": [
+      ".github/workflows/*.yml"
+    ]
   },
-  "labels": ["dependencies"],
+  "labels": [
+    "dependencies"
+  ],
   "prHourlyLimit": 4,
   "prConcurrentLimit": 10,
-  "schedule": ["after 10pm and before 5am every weekday", "every weekend"],
+  "schedule": [
+    "after 10pm every weekday",
+    "every weekend",
+    "before 5am every weekday"
+  ],
   "timezone": "Europe/Brussels",
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Dependency Dashboard",
