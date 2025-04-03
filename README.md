@@ -21,9 +21,10 @@ This repository uses GitHub Actions for CI/CD:
 
 ### Prerequisites
 
-- Node.js (for commit hooks)
 - Python 3.11+
-- Docker (for local testing)
+- `pip` (Python package installer)
+- `pre-commit` ([https://pre-commit.com/](https://pre-commit.com/))
+- Docker (for local testing, optional)
 
 ### Setup
 
@@ -33,14 +34,15 @@ This repository uses GitHub Actions for CI/CD:
    cd synology-cert-updater
    ```
 
-2. Install development dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Install Python dependencies:
+2. Install Python dependencies (including development tools):
    ```bash
    pip install -r requirements.txt
+   ```
+
+3. Install pre-commit hooks:
+   ```bash
+   pre-commit install
+   pre-commit install --hook-type commit-msg # For commitizen integration
    ```
 
 ### Commit Guidelines
@@ -72,26 +74,35 @@ Breaking changes should include `BREAKING CHANGE:` in the commit body or use `!`
 
 ## Deployment
 
-### Kubernetes
+Deployment is managed via the Helm chart located in the `kube/` directory.
 
-1. Create a namespace (optional):
-   ```bash
-   kubectl create namespace synology-updater
-   ```
+### Prerequisites
 
-2. Deploy using the provided script:
-   ```bash
-   ./scripts/deploy.sh -n synology-updater
-   ```
+- `helm` v3+ installed ([https://helm.sh/docs/intro/install/](https://helm.sh/docs/intro/install/))
+- `kubectl` installed and configured to connect to your Kubernetes cluster
 
-3. Create the required secrets:
-   ```bash
-   kubectl create secret generic synology-credentials \
-     --from-literal=host=your-synology-host \
-     --from-literal=username=your-username \
-     --from-literal=password=your-password \
-     -n synology-updater
-   ```
+### Installation
+
+Install the chart using `helm install`. You must provide your Synology credentials either directly via `--set` arguments or by referencing a pre-existing secret.
+
+```bash
+# Example installation setting credentials directly
+helm install my-updater ./kube \
+  --namespace synology \
+  --create-namespace \
+  --set synology.host="YOUR_SYNOLOGY_HOST:5001" \
+  --set synology.username="YOUR_SYNOLOGY_USER" \
+  --set synology.password="YOUR_SYNOLOGY_PASSWORD"
+
+# Example using a pre-existing secret for credentials
+# (Create the secret first, e.g., 'my-manual-syno-secret')
+helm install my-updater ./kube \
+  --namespace synology \
+  --create-namespace \
+  --set secrets.existingCredentialsSecretName="my-manual-syno-secret"
+```
+
+For detailed configuration options, upgrade instructions, and uninstallation steps, please refer to the [Helm Chart Usage documentation](./scripts/README.md#helm-chart-usage).
 
 ### Using Released Versions
 

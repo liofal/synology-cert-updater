@@ -29,7 +29,6 @@ Uses existingCredentialsSecretName if provided, otherwise generates one.
 {{- define "synology-cert-updater.credentialsSecretName" -}}
 {{- .Values.secrets.existingCredentialsSecretName | default (printf "%s-credentials" (include "synology-cert-updater.fullname" .)) }}
 {{- end }}
-{{- end }}
 
 {{/*
 Create chart name and version as used by the chart label.
