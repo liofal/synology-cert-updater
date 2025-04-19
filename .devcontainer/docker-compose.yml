@@ -11,8 +11,11 @@ services:
 
   dev:
     image: mcr.microsoft.com/devcontainers/python
+    env_file:
+      - ../.env # Load environment variables from root .env file
     volumes:
-      - ..:/app
+      - ..:/app # Mount project root
+      - ../test/certs:/certs # Mount test certs to /certs
     entrypoint: /bin/sh -c "while sleep 1000; do :; done"
     profiles: ["dev"]
 

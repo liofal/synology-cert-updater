@@ -16,7 +16,7 @@
 	// Uncomment the next line to run commands after the container is created.
 	// "postCreateCommand": "cat /etc/os-release",
 	"onCreateCommand": "pip install --user pre-commit",
-	"postCreateCommand": "pre-commit install --hook-type commit-msg",
+	"postCreateCommand": "pre-commit install --hook-type commit-msg && pip install -r requirements.txt",
 
 	// Configure tool-specific properties.
 	// "customizations": {},
