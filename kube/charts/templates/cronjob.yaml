@@ -1,50 +1,83 @@
+{{- if and .Values.cronJob.schedule .Values.secrets.certificate .Values.commonJobSettings.domainPattern }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "synology-cert-updater.fullname" . }}-cron
+  name: {{ include "synology-cert-updater.fullname" . }}-cronjob
   labels:
     {{- include "synology-cert-updater.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cronjob
 spec:
   schedule: {{ .Values.cronJob.schedule | quote }}
+  {{- if .Values.cronJob.startingDeadlineSeconds }}
+  startingDeadlineSeconds: {{ .Values.cronJob.startingDeadlineSeconds }}
+  {{- end }}
   concurrencyPolicy: {{ .Values.cronJob.concurrencyPolicy }}
   successfulJobsHistoryLimit: {{ .Values.cronJob.successfulJobsHistoryLimit }}
   failedJobsHistoryLimit: {{ .Values.cronJob.failedJobsHistoryLimit }}
   jobTemplate:
-    metadata:
-      labels:
-        {{- include "synology-cert-updater.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if .Values.commonJobSettings.ttlSecondsAfterFinished }}
       ttlSecondsAfterFinished: {{ .Values.commonJobSettings.ttlSecondsAfterFinished }}
+      {{- end }}
+      backoffLimit: {{ .Values.commonJobSettings.backoffLimit }}
       template:
         metadata:
-          annotations:
-            {{- toYaml .Values.podAnnotations | nindent 12 }}
           labels:
             {{- include "synology-cert-updater.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cronjob-pod
         spec:
-          {{- with .Values.imagePullSecrets }}
-          imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          serviceAccountName: {{ include "synology-cert-updater.serviceAccountName" . }}
-          securityContext:
-            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          # Pods will run with the default ServiceAccount in the namespace
+          restartPolicy: {{ .Values.commonJobSettings.restartPolicy }}
           containers:
-          - {{ include "synology-cert-updater.containerSpec" (dict "Chart" . "Values" .Values "dryRun" .Values.cronJob.dryRun) | indent 10 }}
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - name: SYNOLOGY_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.existingCredentialsSecretName | default (printf "%s-synology-credentials" .Release.Name) }}
+                      key: host
+                - name: SYNOLOGY_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.existingCredentialsSecretName | default (printf "%s-synology-credentials" .Release.Name) }}
+                      key: username
+                - name: SYNOLOGY_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.existingCredentialsSecretName | default (printf "%s-synology-credentials" .Release.Name) }}
+                      key: password
+                - name: CERT_PATH
+                  value: /etc/tls/tls.crt
+                - name: KEY_PATH
+                  value: /etc/tls/tls.key
+                - name: DOMAIN_PATTERN
+                  value: {{ .Values.commonJobSettings.domainPattern | quote }}
+                {{- if .Values.cronJob.dryRun }}
+                - name: DRY_RUN
+                  value: "true"
+                {{- end }}
+              volumeMounts:
+                - name: tls-secret-volume
+                  mountPath: /etc/tls
+                  readOnly: true
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
           volumes:
-          - name: cert-volume
-            secret:
-              secretName: {{ .Values.secrets.certificate | quote }}
-          restartPolicy: Never
-          {{- with .Values.commonJobSettings.nodeSelector }}
+            - name: tls-secret-volume
+              secret:
+                secretName: {{ .Values.secrets.certificate }}
+          {{- with .Values.nodeSelector }}
           nodeSelector:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.commonJobSettings.affinity }}
+          {{- with .Values.affinity }}
           affinity:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.commonJobSettings.tolerations }}
+          {{- with .Values.tolerations }}
           tolerations:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+{{- end }}

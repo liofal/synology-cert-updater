@@ -1,0 +1,29 @@
+# Helm values for deploying synology-cert-updater for liofal.net
+
+# Use the existing secret for Synology credentials
+secrets:
+  existingCredentialsSecretName: "synology-credentials"
+  # Name of the TLS secret containing the certificate for liofal.net
+  certificate: "diskstation-certmanager-tls"
+
+# Settings for the update job/cronjob
+commonJobSettings:
+  # Pattern matching the certificate description on the Synology NAS
+  # Adjust if your Synology uses a different description (e.g., "*.liofal.net")
+  domainPattern: "*.liofal.net"
+
+# Override the container image tag
+image:
+  tag: "1.0.0"
+
+# Configuration for the one-off Kubernetes Job (default)
+job:
+  enabled: true
+
+# Configuration for the scheduled Kubernetes CronJob (disabled by default)
+# To enable, set a schedule (e.g., "0 3 * * *") and set job.enabled=false
+cronJob:
+  schedule: "0 3 1 * *" # Run on the first day of each month at 03:00
+
+# RBAC and ServiceAccount creation are disabled in the chart templates.
+# Pods will run using the default ServiceAccount in the target namespace.

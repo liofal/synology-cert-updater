@@ -1,94 +1,87 @@
-# Default values for synology-cert-updater chart.
+# Default values for synology-cert-updater.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-replicaCount: 1 # Not directly used by Job/CronJob, but standard practice
-
-image:
-  repository: ghcr.io/liofal/synology-cert-updater
-  pullPolicy: Always
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
-
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
-
-serviceAccount:
-  # Specifies whether a service account should be created
-  create: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: ""
-
-podAnnotations: {}
-podSecurityContext: {}
-# fsGroup: 2000
-
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
-
-# Names for the secrets used by the application
-secrets:
-  # Name of the secret containing Synology credentials.
-  # If existingCredentialsSecretName is set, this value is ignored for the credentials secret name,
-  # but the secret template will still be rendered (though not applied if existingCredentialsSecretName is used).
-  credentials: "synology-credentials"
-  # Name of an existing secret containing Synology credentials (host, username, password keys).
-  # If set, the chart will use this secret instead of creating one.
-  existingCredentialsSecretName: ""
-  # Name of the secret containing the input certificate and key
-  certificate: "ingress-certmanager-tls"
-
-# Synology connection details (REQUIRED)
-# These must be provided during installation, e.g., via --set or a separate values file.
+# -- Configuration for the target Synology NAS
 synology:
-  host: "" # e.g., "your_host:5001"
+  # -- Hostname or IP address and port of the Synology NAS API (e.g., your-nas.local:5001 or 192.168.1.100:5001)
+  host: ""
+  # -- Synology username for authentication. Required if secrets.existingCredentialsSecretName is not set.
   username: ""
+  # -- Synology password for authentication. Required if secrets.existingCredentialsSecretName is not set.
   password: ""
 
-# Pattern for the domain certificate to update on Synology
-domainPattern: "*.liofal.net"
+# -- Configuration for Kubernetes Secrets used by the chart
+secrets:
+  # -- Name of the Kubernetes TLS secret containing the certificate and key to upload (e.g., my-tls-secret)
+  certificate: ""
+  # -- Name of the Kubernetes Secret to store Synology credentials. Used only if existingCredentialsSecretName is empty.
+  # The actual name used in templates defaults to RELEASE_NAME-synology-credentials if this is not set.
+  credentials: "" # Default name is generated in templates if needed
+  # -- Name of an existing Kubernetes Secret containing Synology credentials. If set, the chart will not create its own credentials secret.
+  # The existing secret must contain keys named 'host', 'username', and 'password'.
+  existingCredentialsSecretName: ""
 
-# Common settings for Job and CronJob pods
+# -- Configuration for the one-off Kubernetes Job
+job:
+  # -- Enable the creation of a Kubernetes Job for immediate execution.
+  enabled: true
+  # -- Run the update process in dry-run mode (simulate changes without applying them).
+  dryRun: false
+
+# -- Configuration for the scheduled Kubernetes CronJob
+cronJob:
+  # -- Kubernetes CronJob schedule (e.g., "0 2 * * *"). If set, a CronJob is created instead of a Job (unless job.enabled is also true).
+  schedule: ""
+  # -- Run the update process in dry-run mode (simulate changes without applying them).
+  dryRun: false
+  # -- Deadline in seconds for starting the job if it misses its scheduled time.
+  startingDeadlineSeconds: null
+  # -- Concurrency policy for the CronJob (Allow, Forbid, Replace).
+  concurrencyPolicy: Allow
+  # -- Number of successful finished jobs to retain.
+  successfulJobsHistoryLimit: 3
+  # -- Number of failed finished jobs to retain.
+  failedJobsHistoryLimit: 1
+
+# -- Common settings applicable to both Job and CronJob pods
 commonJobSettings:
-  ttlSecondsAfterFinished: 86400 # Auto-delete job 24h after completion
-  resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
+  # -- Pattern to identify the certificate on the Synology NAS to update (e.g., "*.example.com", "synology.my.domain")
+  domainPattern: ""
+  # -- Time-to-live in seconds after the Job finishes (completed or failed). Automatically cleans up finished Jobs.
+  ttlSecondsAfterFinished: 3600 # 1 hour
+  # -- Restart policy for the pod within the Job/CronJob (Never, OnFailure).
+  restartPolicy: Never
+  # -- Optional backoff limit for failed pods within a Job.
+  backoffLimit: 4
+
+# -- Container image configuration
+image:
+  # -- Container image repository
+  repository: ghcr.io/liofal/synology-cert-updater
+  # -- Container image pull policy
+  pullPolicy: IfNotPresent
+  # -- Container image tag (defaults to the chart's appVersion)
+  tag: ""
+
+# -- Pod resource requests and limits
+# @default -- No requests or limits set
+resources: {}
   # requests:
   #   cpu: 100m
   #   memory: 128Mi
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
+  # limits:
+  #   cpu: 200m
+  #   memory: 256Mi
 
-# Configuration for the CronJob resource
-cronJob:
-  schedule: "0 0 1 * *" # Run at midnight on the first day of each month
-  concurrencyPolicy: Forbid # Options: Allow, Forbid, Replace
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 1
-  dryRun: false # Set to true to only log actions without making changes
+# -- Node selector configuration for pod assignment
+# @default -- Pods can be scheduled on any node
+nodeSelector: {}
 
-# Configuration for the one-off Job resource
-job:
-  enabled: true # Set to false to disable creation of the one-off Job
-  dryRun: true # Set to true to only log actions without making changes
+# -- Tolerations for pod scheduling to allow scheduling onto nodes with matching taints
+# @default -- No tolerations
+tolerations: []
 
-# RBAC settings
-rbac:
-  # Specifies whether RBAC resources should be created
-  create: true
+# -- Affinity configuration for pod scheduling
+# @default -- No affinity rules
+affinity: {}

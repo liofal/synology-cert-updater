@@ -74,7 +74,7 @@ Breaking changes should include `BREAKING CHANGE:` in the commit body or use `!`
 
 ## Deployment
 
-Deployment is managed via the Helm chart located in the `kube/` directory.
+Deployment is managed via the Helm chart located in the `kube/charts/synology-cert-updater` directory.
 
 ### Prerequisites
 
@@ -83,26 +83,70 @@ Deployment is managed via the Helm chart located in the `kube/` directory.
 
 ### Installation
 
-Install the chart using `helm install`. You must provide your Synology credentials either directly via `--set` arguments or by referencing a pre-existing secret.
+Install the chart using `helm install`. You must provide your Synology credentials, the target certificate secret name, and the domain pattern. Credentials can be set directly or by referencing a pre-existing secret.
 
 ```bash
 # Example installation setting credentials directly
-helm install my-updater ./kube \
+helm install my-updater ./kube/charts \
   --namespace synology \
   --create-namespace \
   --set synology.host="YOUR_SYNOLOGY_HOST:5001" \
   --set synology.username="YOUR_SYNOLOGY_USER" \
-  --set synology.password="YOUR_SYNOLOGY_PASSWORD"
+  --set synology.password="YOUR_SYNOLOGY_PASSWORD" \
+  --set secrets.certificate="my-tls-secret" \
+  --set commonJobSettings.domainPattern="*.example.com"
 
 # Example using a pre-existing secret for credentials
-# (Create the secret first, e.g., 'my-manual-syno-secret')
-helm install my-updater ./kube \
+# (Create the secret 'my-manual-syno-secret' with keys 'host', 'username', 'password' first)
+helm install my-updater ./kube/charts \
   --namespace synology \
   --create-namespace \
-  --set secrets.existingCredentialsSecretName="my-manual-syno-secret"
+  --set secrets.existingCredentialsSecretName="my-manual-syno-secret" \
+  --set secrets.certificate="my-tls-secret" \
+  --set commonJobSettings.domainPattern="*.example.com"
+
+# Example for a scheduled CronJob (runs daily at 2 AM)
+helm install my-updater ./kube/charts \
+  --namespace synology \
+  --create-namespace \
+  --set secrets.existingCredentialsSecretName="my-manual-syno-secret" \
+  --set secrets.certificate="my-tls-secret" \
+  --set commonJobSettings.domainPattern="*.example.com" \
+  --set cronJob.schedule="0 2 * * *" \
+  --set job.enabled=false # Disable the one-off Job
 ```
 
-For detailed configuration options, upgrade instructions, and uninstallation steps, please refer to the [Helm Chart Usage documentation](./scripts/README.md#helm-chart-usage).
+### Helm Chart Configuration
+
+The following table lists the configurable parameters of the `synology-cert-updater` chart and their default values.
+
+| Parameter                                | Description                                                                                                                               | Default                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `synology.host`                          | Hostname or IP address and port of the Synology NAS API (e.g., `your-nas.local:5001`). **Required**.                                       | `""`                                           |
+| `synology.username`                      | Synology username for authentication. Required if `secrets.existingCredentialsSecretName` is not set.                                     | `""`                                           |
+| `synology.password`                      | Synology password for authentication. Required if `secrets.existingCredentialsSecretName` is not set.                                     | `""`                                           |
+| `secrets.certificate`                    | Name of the Kubernetes TLS secret containing the certificate and key to upload (e.g., `my-tls-secret`). **Required**.                       | `""`                                           |
+| `secrets.credentials`                    | Name of the Kubernetes Secret to store Synology credentials. Created if `secrets.existingCredentialsSecretName` is empty.                 | `{{ .Release.Name }}-synology-credentials`     |
+| `secrets.existingCredentialsSecretName`  | Name of an existing Secret containing Synology credentials (`host`, `username`, `password`). If set, `secrets.credentials` is not created. | `""`                                           |
+| `job.enabled`                            | Enable the creation of a Kubernetes Job for immediate execution. Ignored if `cronJob.schedule` is set.                                    | `true`                                         |
+| `job.dryRun`                             | Run the Job in dry-run mode (simulate changes without applying them).                                                                     | `false`                                        |
+| `cronJob.schedule`                       | Kubernetes CronJob schedule (e.g., `"0 2 * * *"`). If set, a CronJob is created instead of a Job.                                         | `""`                                           |
+| `cronJob.dryRun`                         | Run the CronJob pods in dry-run mode.                                                                                                     | `false`                                        |
+| `cronJob.startingDeadlineSeconds`        | Deadline in seconds for starting the job if it misses its scheduled time.                                                                 | `null`                                         |
+| `cronJob.concurrencyPolicy`              | Concurrency policy for the CronJob (`Allow`, `Forbid`, `Replace`).                                                                        | `Allow`                                        |
+| `cronJob.successfulJobsHistoryLimit`     | Number of successful finished jobs to retain.                                                                                             | `3`                                            |
+| `cronJob.failedJobsHistoryLimit`         | Number of failed finished jobs to retain.                                                                                                 | `1`                                            |
+| `commonJobSettings.domainPattern`        | Pattern to identify the certificate on the Synology NAS to update (e.g., `*.example.com`). **Required**.                                  | `""`                                           |
+| `commonJobSettings.ttlSecondsAfterFinished` | Time-to-live in seconds after the Job/CronJob pod finishes. Automatically cleans up finished Jobs.                                        | `3600` (1 hour)                                |
+| `commonJobSettings.restartPolicy`        | Restart policy for the pod (`Never`, `OnFailure`).                                                                                        | `Never`                                        |
+| `commonJobSettings.backoffLimit`         | Optional backoff limit for failed pods within a Job.                                                                                      | `4`                                            |
+| `image.repository`                       | Container image repository.                                                                                                               | `ghcr.io/liofal/synology-cert-updater`         |
+| `image.pullPolicy`                       | Container image pull policy.                                                                                                              | `IfNotPresent`                                 |
+| `image.tag`                              | Container image tag.                                                                                                                      | Defaults to chart's `appVersion` (`0.1.0`)     |
+| `resources`                              | Pod resource requests and limits.                                                                                                         | `{}`                                           |
+| `nodeSelector`                           | Node selector configuration for pod assignment.                                                                                           | `{}`                                           |
+| `tolerations`                            | Tolerations for pod scheduling.                                                                                                           | `[]`                                           |
+| `affinity`                               | Affinity configuration for pod scheduling.                                                                                                | `{}`                                           |
 
 ### Using Released Versions
 
